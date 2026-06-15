@@ -1,0 +1,5 @@
+# local env (compose reads it; created from .env.sample)
+postgres-example/.env
+
+# transient artifacts
+dekart-running.png

@@ -1,0 +1,145 @@
+name: dekart-pg-example
+
+# Fully-local example: Postgres as the Dekart data source, with query results
+# stored in a local MinIO (S3-compatible) bucket. Metadata stays on Dekart's
+# built-in SQLite, so no license key is needed.
+#
+# Why MinIO instead of DEKART_STORAGE=PG: the PG "replay" storage path reads
+# created_at from the SQLite metadata DB and scans it into a Go time.Time,
+# which fails on SQLite (it returns a string). S3/MinIO storage reads the
+# timestamp from the stored object instead, avoiding that bug.
+#
+#   sudo docker compose up -d
+#   open http://localhost:8080
+#
+# Set a Mapbox token so tiles render:  export DEKART_MAPBOX_TOKEN=pk....
+
+services:
+  pg:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dekart
+      POSTGRES_PASSWORD: dekart
+      POSTGRES_DB: dekart_geo
+    volumes:
+      - ./init/01-sample.sql:/docker-entrypoint-initdb.d/01-sample.sql:ro
+      - ./init/denmark-pois.csv:/docker-entrypoint-initdb.d/denmark-pois.csv:ro
+      - ./init/germany-cities.csv:/docker-entrypoint-initdb.d/germany-cities.csv:ro
+      - ./init/germany-lines.csv:/docker-entrypoint-initdb.d/germany-lines.csv:ro
+      - ./init/germany-regions.csv:/docker-entrypoint-initdb.d/germany-regions.csv:ro
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"          # host 5433 -> avoids clashing with a local Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dekart -d dekart_geo"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+    ports:
+      - "9000:9000"          # S3 API
+      - "9001:9001"          # web console (minioadmin / minioadmin)
+
+  # One-shot: wait for MinIO, then create the results bucket.
+  createbucket:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for minio...'; sleep 1;
+      done;
+      mc mb -p local/dekart || true;
+      echo 'bucket ready';
+      "
+
+  dekart:
+    image: dekartxyz/dekart
+    depends_on:
+      pg:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+    environment:
+      # --- data source: Postgres ---
+      DEKART_DATASOURCE: "PG"
+      DEKART_POSTGRES_DATASOURCE_CONNECTION: "postgres://dekart:dekart@pg:5432/dekart_geo?sslmode=disable"
+      # --- result storage: local MinIO over the S3 API ---
+      DEKART_STORAGE: "S3"
+      DEKART_CLOUD_STORAGE_BUCKET: "dekart"
+      AWS_ENDPOINT: "http://minio:9000"
+      AWS_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+      # --- maps ---
+      DEKART_MAPBOX_TOKEN: "${DEKART_MAPBOX_TOKEN:-}"
+      # Starter shown as "💡 Start with a sample query" when the editor is empty.
+      # Dekart runs ONE statement, so this is a menu: query #1 is active, the rest
+      # are commented — swap which block is uncommented to try another.
+      DEKART_UX_SAMPLE_QUERY_SQL: |-
+        -- 🇩🇪 Germany examples — points, lines, polygons. One query is active;
+        -- uncomment another to run it. More in postgres-sample-queries.sql
+
+        -- 1) POINTS — German cities, color/size by population
+        SELECT name, state, latitude, longitude, population
+        FROM sample.germany_cities
+        ORDER BY population DESC;
+
+        -- 2) LINES — intercity corridors (kepler reads the geom_wkt column)
+        -- SELECT name, from_city, to_city, distance_km, geom_wkt
+        -- FROM sample.germany_lines;
+
+        -- 3) POLYGONS — macro-region hulls, color by city count
+        -- SELECT region, n_cities, geom_wkt
+        -- FROM sample.germany_regions;
+
+        -- 4) Population by state — centroid bubble, sized by total population
+        -- SELECT state, COUNT(*) AS cities, SUM(population) AS population,
+        --        AVG(latitude) AS latitude, AVG(longitude) AS longitude
+        -- FROM sample.germany_cities GROUP BY state ORDER BY population DESC;
+    ports:
+      - "8080:8080"
+
+  # BigQuery instance — opt in with:  docker compose --profile bq up -d
+  # Requires a GCP project + credentials (see creds/README.txt). Results are
+  # stored in the same local MinIO, so no GCS bucket or license is needed.
+  dekart-bq:
+    image: dekartxyz/dekart
+    profiles: ["bq"]
+    depends_on:
+      createbucket:
+        condition: service_completed_successfully
+    environment:
+      # --- data source: BigQuery ---
+      DEKART_DATASOURCE: "BQ"
+      DEKART_BIGQUERY_PROJECT_ID: "${GCP_PROJECT_ID:-}"
+      # service-account key mounted below; for gcloud ADC see README
+      GOOGLE_APPLICATION_CREDENTIALS: "/creds/key.json"
+      DEKART_BIGQUERY_MAX_BYTES_BILLED: "1099511627776"   # 1 TiB safety cap
+      # --- result storage: local MinIO over the S3 API ---
+      DEKART_STORAGE: "S3"
+      DEKART_CLOUD_STORAGE_BUCKET: "dekart"
+      AWS_ENDPOINT: "http://minio:9000"
+      AWS_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+      # --- maps ---
+      DEKART_MAPBOX_TOKEN: "${DEKART_MAPBOX_TOKEN:-}"
+    volumes:
+      - ./creds/key.json:/creds/key.json:ro
+    ports:
+      - "8081:8080"
+
+volumes:
+  pgdata:
+  miniodata:
