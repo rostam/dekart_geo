@@ -113,6 +113,24 @@ WHERE distance_km > 300;
 -- Note: `geom_wkt` (WKT text) is also available in both tables for use in an
 -- external SQL client; kepler renders the GeoJSON `geometry` column more reliably.
 
+-- G9) ALL GEOMETRIES TOGETHER — points + lines + polygons in ONE GeoJSON layer.
+--     City lat/lon is converted to a GeoJSON Point so everything shares one
+--     `geometry` column. Color the layer by `kind` (point/line/polygon).
+SELECT 'point'   AS kind, name   AS label, population::double precision AS value,
+       json_build_object('type', 'Point',
+         'coordinates', json_build_array(longitude, latitude))::text    AS geometry
+FROM sample.germany_cities
+UNION ALL
+SELECT 'line'    AS kind, name   AS label, distance_km                  AS value, geometry
+FROM sample.germany_lines
+UNION ALL
+SELECT 'polygon' AS kind, region AS label, n_cities::double precision   AS value, geometry
+FROM sample.germany_regions;
+
+-- Tip: you can also show them together by adding THREE separate queries to one
+-- map (G1 points, G6 lines, G7 polygons) — each becomes its own layer you can
+-- style independently. G9 is the single-query / single-layer version.
+
 
 -- ---------------------------------------------------------------------------
 -- OPTIONAL: polygons/hulls need PostGIS. To enable, switch the compose `pg`

@@ -107,6 +107,13 @@ services:
         -- SELECT state, COUNT(*) AS cities, SUM(population) AS population,
         --        AVG(latitude) AS latitude, AVG(longitude) AS longitude
         -- FROM sample.germany_cities GROUP BY state ORDER BY population DESC;
+
+        -- 5) ALL TOGETHER — points + lines + polygons in one layer; color by kind
+        -- SELECT 'point' AS kind, name AS label, population::double precision AS value,
+        --        json_build_object('type','Point','coordinates',json_build_array(longitude,latitude))::text AS geometry
+        -- FROM sample.germany_cities
+        -- UNION ALL SELECT 'line', name, distance_km, geometry FROM sample.germany_lines
+        -- UNION ALL SELECT 'polygon', region, n_cities::double precision, geometry FROM sample.germany_regions;
     ports:
       - "8080:8080"
 

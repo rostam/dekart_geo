@@ -14,6 +14,8 @@ become genuinely loadable and portable.
 - `styles/points-style.json` — point map: cities colored & sized by population.
 - `styles/lines-style.json` — line map: corridors colored by distance.
 - `styles/regions-style.json` — polygon map: region hulls filled by city count.
+- `styles/combined-style.json` — points + lines + polygons in one layer (query
+  G9), colored by `kind`.
 
 ## Build it (one command)
 
@@ -36,9 +38,10 @@ into `.env`, and recreates the stack. To go back to the official image:
    - **Points:** `SELECT name, state, latitude, longitude, population FROM sample.germany_cities;`
    - **Lines:**  `SELECT name, distance_km, geometry FROM sample.germany_lines;`
    - **Polygons:** `SELECT region, n_cities, geometry FROM sample.germany_regions;`
+   - **All together:** query **G9** in `../postgres-sample-queries.sql`.
 2. Click the **Import style** button (paint-drop icon) in the map header.
 3. Pick the matching file: `styles/points-style.json`, `styles/lines-style.json`,
-   or `styles/regions-style.json`.
+   `styles/regions-style.json`, or `styles/combined-style.json`.
 
 The style applies to whatever dataset is loaded, regardless of its id. The
 `mapState` in each file also recenters on Germany.

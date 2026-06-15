@@ -71,6 +71,13 @@ SELECT name, distance_km, geometry FROM sample.germany_lines;
 SELECT region, n_cities, geometry FROM sample.germany_regions;
 ```
 
+**Show points + lines + polygons together** — query **G9** UNIONs all three
+into one GeoJSON `geometry` column (city lat/lon becomes a GeoJSON Point), so a
+single layer renders everything; color it by `kind`. Alternatively, add three
+separate queries to one map (each becomes its own layer). With the patched image
+you can import [`custom-image/styles/combined-style.json`](custom-image/styles/combined-style.json)
+to style the combined layer.
+
 > **Lines/polygons not showing?** Run each geometry query in a **new map**.
 > When you change the SQL inside an existing map, Dekart replaces the data with
 > `autoCreateLayers: false`, so it keeps the old layer and never creates a layer
