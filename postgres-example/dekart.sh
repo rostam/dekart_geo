@@ -4,10 +4,11 @@
 # Usage:
 #   ./dekart.sh up         # start core stack (pg + minio + dekart) on :8080
 #   ./dekart.sh bq         # also start the BigQuery instance on :8081 (needs GCP)
+#   ./dekart.sh ch         # also start the Clickhouse instance on :8082 (local)
 #   ./dekart.sh build      # build the patched image + use it (adds "Import style")
 #   ./dekart.sh official   # switch back to the official dekart image
 #   ./dekart.sh down       # stop & remove containers (keeps data)
-#   ./dekart.sh reset      # stop & WIPE all data (postgres + minio volumes)
+#   ./dekart.sh reset      # stop & WIPE all data (postgres + minio + clickhouse)
 #   ./dekart.sh restart    # recreate the core stack
 #   ./dekart.sh status     # show container status
 #   ./dekart.sh logs [svc] # follow logs (default: dekart)
@@ -17,6 +18,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 CUSTOM_IMAGE="dekart-custom:local"
+ALL_PROFILES="--profile bq --profile ch"
 
 # --- pick docker invocation: direct if we have socket access, else sudo ---
 if docker info >/dev/null 2>&1; then
@@ -41,7 +43,6 @@ ensure_env() {
 set_env_var() {
   ensure_env
   local key="$1" val="$2"
-  # drop any existing active line for this key, then append
   sed -i "/^${key}=/d" .env
   printf '%s=%s\n' "$key" "$val" >> .env
 }
@@ -55,9 +56,10 @@ free_8080() {
 }
 
 urls() {
-  echo "Dekart (Postgres): http://localhost:8080"
-  [[ "${1:-}" == "bq" ]] && echo "Dekart (BigQuery): http://localhost:8081"
-  echo "MinIO console:     http://localhost:9001  (minioadmin / minioadmin)"
+  echo "Dekart (Postgres):   http://localhost:8080"
+  [[ "${1:-}" == "bq" ]] && echo "Dekart (BigQuery):   http://localhost:8081"
+  [[ "${1:-}" == "ch" ]] && echo "Dekart (Clickhouse): http://localhost:8082"
+  echo "MinIO console:       http://localhost:9001  (minioadmin / minioadmin)"
 }
 
 case "${1:-up}" in
@@ -75,6 +77,11 @@ case "${1:-up}" in
     $DC --profile bq up -d
     echo; urls bq
     ;;
+  ch)
+    ensure_env; free_8080
+    $DC --profile ch up -d
+    echo; urls ch
+    ;;
   build)
     ./custom-image/build.sh
     set_env_var DEKART_IMAGE "$CUSTOM_IMAGE"
@@ -88,11 +95,11 @@ case "${1:-up}" in
     ensure_env; free_8080; $DC up -d --force-recreate
     echo; urls
     ;;
-  down|stop)    $DC --profile bq down ;;
-  reset)        $DC --profile bq down -v; echo "All data wiped." ;;
+  down|stop)    $DC $ALL_PROFILES down ;;
+  reset)        $DC $ALL_PROFILES down -v; echo "All data wiped." ;;
   restart)      ensure_env; free_8080; $DC up -d --force-recreate; echo; urls ;;
-  status|ps)    $DC --profile bq ps ;;
+  status|ps)    $DC $ALL_PROFILES ps ;;
   logs)         $DC logs -f "${2:-dekart}" ;;
   psql)         $DC exec pg psql -U dekart -d dekart_geo ;;
-  *)            echo "Usage: $0 {up|bq|build|official|down|reset|restart|status|logs [svc]|psql}"; exit 1 ;;
+  *)            echo "Usage: $0 {up|bq|ch|build|official|down|reset|restart|status|logs [svc]|psql}"; exit 1 ;;
 esac

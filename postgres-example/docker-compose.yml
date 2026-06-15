@@ -83,6 +83,8 @@ services:
       AWS_SECRET_ACCESS_KEY: "minioadmin"
       # --- maps ---
       DEKART_MAPBOX_TOKEN: "${DEKART_MAPBOX_TOKEN:-}"
+      # allow drag-and-drop CSV / GeoJSON / Parquet upload (stored in MinIO)
+      DEKART_ALLOW_FILE_UPLOAD: "1"
       # Starter shown as "💡 Start with a sample query" when the editor is empty.
       # Dekart runs ONE statement, so this is a menu: query #1 is active, the rest
       # are commented — swap which block is uncommented to try another.
@@ -147,6 +149,57 @@ services:
     ports:
       - "8081:8080"
 
+  # Clickhouse data source (experimental, fully local) — opt in with:
+  #   docker compose --profile ch up -d   (or ./dekart.sh ch)
+  # Clickhouse exports results to the local MinIO via its s3() function.
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    profiles: ["ch"]
+    environment:
+      CLICKHOUSE_USER: dekart
+      CLICKHOUSE_PASSWORD: dekart
+      CLICKHOUSE_DB: dekart_geo
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - ./init/clickhouse-init.sql:/docker-entrypoint-initdb.d/clickhouse-init.sql:ro
+      - chdata:/var/lib/clickhouse
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "dekart", "--password", "dekart", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  dekart-ch:
+    image: ${DEKART_IMAGE:-dekartxyz/dekart}
+    profiles: ["ch"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+    environment:
+      DEKART_DATASOURCE: "CH"
+      DEKART_CLICKHOUSE_DATA_CONNECTION: "clickhouse://dekart:dekart@clickhouse:9000/dekart_geo"
+      DEKART_CLICKHOUSE_S3_OUTPUT_LOCATION: "s3://dekart/ch"
+      # result storage: same local MinIO
+      DEKART_STORAGE: "S3"
+      DEKART_CLOUD_STORAGE_BUCKET: "dekart"
+      AWS_ENDPOINT: "http://minio:9000"
+      AWS_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+      DEKART_MAPBOX_TOKEN: "${DEKART_MAPBOX_TOKEN:-}"
+      DEKART_UX_SAMPLE_QUERY_SQL: |-
+        -- Clickhouse: German cities (color/size by population)
+        SELECT name, state, latitude, longitude, population
+        FROM dekart_geo.germany_cities
+        ORDER BY population DESC
+    ports:
+      - "8082:8080"
+
 volumes:
   pgdata:
   miniodata:
+  chdata:

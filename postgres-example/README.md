@@ -31,6 +31,7 @@ query** (a menu of Germany examples), or paste one from
 |---|---|
 | `up` | Start the core stack (pg + minio + dekart) on :8080 |
 | `bq` | Also start the BigQuery instance on :8081 (needs GCP — see below) |
+| `ch` | Also start the Clickhouse instance on :8082 (fully local — see below) |
 | `build` | Build the patched image + enable it (adds the **Import style** button) |
 | `official` | Switch back to the official Dekart image |
 | `down` | Stop & remove containers (keeps data) |
@@ -102,6 +103,62 @@ Then run the matching query and import a style from
 `points-style.json`, `lines-style.json`, `regions-style.json`. See
 [`custom-image/README.md`](custom-image/README.md) for details. Revert anytime
 with `./dekart.sh official`.
+
+## Upload your own data (CSV / GeoJSON / Parquet)
+
+File upload is enabled (`DEKART_ALLOW_FILE_UPLOAD=1`; files are stored in MinIO).
+On the home page choose **Upload file** and drag in a file. A ready sample is
+included: [`uploads/germany.geojson`](uploads/germany.geojson) — a single
+FeatureCollection with city **points**, corridor **lines**, and region
+**polygons** (each Feature has `kind`, `name`, `value`), so one upload shows all
+three geometry types. Color the layer by `kind`.
+
+## Agent integration (MCP)
+
+Dekart exposes MCP tool endpoints so an agent (Claude / Codex) can build maps by
+writing SQL against your data: `GET /api/v1/mcp/tools` and
+`POST /api/v1/mcp/call`. On this local anonymous instance they need no token —
+smoke-test them:
+
+```sh
+./mcp-smoke.sh          # lists the tool catalog + calls list_connections
+```
+
+These are a custom REST shape, not MCP-over-stdio, so the supported agent client
+is Dekart's **geosql** skill rather than a raw `.mcp.json`:
+
+```sh
+pip install geosql && geosql        # installs the Claude/Codex skill
+pip install dekart-cli && dekart init
+```
+
+Point it at `http://localhost:8080`, then ask Claude to build a map from
+`sample.germany_cities` (or any table). The tools include `create_report`,
+`create_query`, `run_query`, `update_report_map_config`, and more.
+
+## Clickhouse data source (experimental, port 8082)
+
+A fully-local second warehouse. Clickhouse exports query results to the same
+MinIO via its `s3()` function, so no cloud is needed.
+
+```sh
+./dekart.sh ch          # starts clickhouse + dekart-ch on :8082
+```
+
+Open http://localhost:8082 and run:
+
+```sql
+SELECT name, state, latitude, longitude, population
+FROM dekart_geo.germany_cities
+ORDER BY population DESC;
+```
+
+> ⚠️ **Experimental / untested here.** Config is derived from the dekart source
+> (`DEKART_DATASOURCE=CH`, `DEKART_CLICKHOUSE_DATA_CONNECTION`,
+> `DEKART_CLICKHOUSE_S3_OUTPUT_LOCATION=s3://dekart/ch`, S3/MinIO). If a query
+> fails, check `./dekart.sh logs dekart-ch` and `logs clickhouse` — Clickhouse's
+> `s3()` export needs network access to `minio:9000` and the `dekart` bucket
+> (both provided by the stack).
 
 ## How Dekart is configured
 
