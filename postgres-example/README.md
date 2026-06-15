@@ -150,10 +150,15 @@ Open http://localhost:8082 and run:
 ```sql
 SELECT name, state, latitude, longitude, population
 FROM dekart_geo.germany_cities
-ORDER BY population DESC;
+ORDER BY population DESC
 ```
 
-> ⚠️ **Experimental / untested here.** Config is derived from the dekart source
+> ⚠️ **No trailing `;` for Clickhouse queries.** Dekart wraps the query as
+> `INSERT INTO FUNCTION s3(...) <query> SETTINGS ...`; a trailing semicolon
+> turns that into two statements (`Code 62: Multi-statements are not allowed`).
+> Postgres/BigQuery are unaffected.
+
+> ⚠️ **Experimental.** Config is derived from the dekart source
 > (`DEKART_DATASOURCE=CH`, `DEKART_CLICKHOUSE_DATA_CONNECTION`,
 > `DEKART_CLICKHOUSE_S3_OUTPUT_LOCATION=s3://dekart/ch`, S3/MinIO). If a query
 > fails, check `./dekart.sh logs dekart-ch` and `logs clickhouse` — Clickhouse's
