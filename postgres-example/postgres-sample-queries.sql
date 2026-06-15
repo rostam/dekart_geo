@@ -95,19 +95,23 @@ FROM sample.germany_cities
 WHERE longitude BETWEEN 12.0 AND 14.5
   AND latitude  BETWEEN 51.5 AND 53.5;
 
--- G6) LINES — intercity corridors as WKT LINESTRINGs (color by distance)
-SELECT name, from_city, to_city, distance_km, geom_wkt
+-- G6) LINES — intercity corridors (run in a NEW map). The `geometry` column is
+--     GeoJSON, which kepler.gl auto-detects and draws as a path layer.
+SELECT name, from_city, to_city, distance_km, geometry
 FROM sample.germany_lines
 ORDER BY distance_km DESC;
 
--- G7) POLYGONS — macro-region hulls as WKT POLYGONs (color by city count)
-SELECT region, n_cities, geom_wkt
+-- G7) POLYGONS — macro-region hulls (run in a NEW map). Color by n_cities.
+SELECT region, n_cities, geometry
 FROM sample.germany_regions;
 
 -- G8) Long corridors only (> 300 km)
-SELECT name, distance_km, geom_wkt
+SELECT name, distance_km, geometry
 FROM sample.germany_lines
 WHERE distance_km > 300;
+
+-- Note: `geom_wkt` (WKT text) is also available in both tables for use in an
+-- external SQL client; kepler renders the GeoJSON `geometry` column more reliably.
 
 
 -- ---------------------------------------------------------------------------

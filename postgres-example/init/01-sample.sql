@@ -57,10 +57,11 @@ CREATE TABLE sample.germany_lines (
     from_city    TEXT,
     to_city      TEXT,
     distance_km  DOUBLE PRECISION,
-    geom_wkt     TEXT
+    geom_wkt     TEXT,
+    geometry     TEXT   -- GeoJSON; kepler.gl auto-detects this column
 );
 
-COPY sample.germany_lines (name, from_city, to_city, distance_km, geom_wkt)
+COPY sample.germany_lines (name, from_city, to_city, distance_km, geom_wkt, geometry)
 FROM '/docker-entrypoint-initdb.d/germany-lines.csv'
 WITH (FORMAT csv, HEADER true);
 
@@ -68,9 +69,10 @@ WITH (FORMAT csv, HEADER true);
 CREATE TABLE sample.germany_regions (
     region    TEXT,
     n_cities  INTEGER,
-    geom_wkt  TEXT
+    geom_wkt  TEXT,
+    geometry  TEXT   -- GeoJSON; kepler.gl auto-detects this column
 );
 
-COPY sample.germany_regions (region, n_cities, geom_wkt)
+COPY sample.germany_regions (region, n_cities, geom_wkt, geometry)
 FROM '/docker-entrypoint-initdb.d/germany-regions.csv'
 WITH (FORMAT csv, HEADER true);

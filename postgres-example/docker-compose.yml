@@ -95,12 +95,12 @@ services:
         FROM sample.germany_cities
         ORDER BY population DESC;
 
-        -- 2) LINES — intercity corridors (kepler reads the geom_wkt column)
-        -- SELECT name, from_city, to_city, distance_km, geom_wkt
+        -- 2) LINES — intercity corridors (run in a NEW map; kepler auto-detects geometry)
+        -- SELECT name, from_city, to_city, distance_km, geometry
         -- FROM sample.germany_lines;
 
-        -- 3) POLYGONS — macro-region hulls, color by city count
-        -- SELECT region, n_cities, geom_wkt
+        -- 3) POLYGONS — macro-region hulls (run in a NEW map; color by n_cities)
+        -- SELECT region, n_cities, geometry
         -- FROM sample.germany_regions;
 
         -- 4) Population by state — centroid bubble, sized by total population
