@@ -64,7 +64,7 @@ services:
       "
 
   dekart:
-    image: dekartxyz/dekart
+    image: ${DEKART_IMAGE:-dekartxyz/dekart}
     depends_on:
       pg:
         condition: service_healthy
@@ -114,7 +114,7 @@ services:
   # Requires a GCP project + credentials (see creds/README.txt). Results are
   # stored in the same local MinIO, so no GCS bucket or license is needed.
   dekart-bq:
-    image: dekartxyz/dekart
+    image: ${DEKART_IMAGE:-dekartxyz/dekart}
     profiles: ["bq"]
     depends_on:
       createbucket:

@@ -1,0 +1,57 @@
+{
+  "version": "v1",
+  "config": {
+    "visState": {
+      "filters": [],
+      "layers": [
+        {
+          "id": "points_cities",
+          "type": "point",
+          "config": {
+            "dataId": "REPLACE_ME",
+            "label": "Cities",
+            "color": [255, 203, 153],
+            "columns": { "lat": "latitude", "lng": "longitude", "altitude": null },
+            "isVisible": true,
+            "visConfig": {
+              "radius": 12,
+              "fixedRadius": false,
+              "opacity": 0.85,
+              "outline": false,
+              "thickness": 2,
+              "colorRange": {
+                "name": "Uber Viz Sequential",
+                "type": "sequential",
+                "category": "Uber",
+                "colors": ["#E6FAFA", "#C1E5E6", "#9DD0D4", "#75BBC1", "#4BA7AF", "#00939C"]
+              },
+              "radiusRange": [6, 45],
+              "filled": true
+            },
+            "textLabel": []
+          },
+          "visualChannels": {
+            "colorField": { "name": "population", "type": "integer" },
+            "colorScale": "quantize",
+            "sizeField": { "name": "population", "type": "integer" },
+            "sizeScale": "sqrt"
+          }
+        }
+      ],
+      "interactionConfig": {
+        "tooltip": {
+          "fieldsToShow": {
+            "REPLACE_ME": [
+              { "name": "name", "format": null },
+              { "name": "state", "format": null },
+              { "name": "population", "format": null }
+            ]
+          },
+          "enabled": true
+        }
+      }
+    },
+    "mapState": { "bearing": 0, "pitch": 0, "latitude": 51.1, "longitude": 10.4, "zoom": 5 },
+    "mapStyle": { "styleType": "dark" }
+  }
+}

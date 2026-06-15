@@ -1,0 +1,112 @@
+diff --git a/src/client/ReportHeaderButtons.jsx b/src/client/ReportHeaderButtons.jsx
+index 00d6532..02254dd 100644
+--- a/src/client/ReportHeaderButtons.jsx
++++ b/src/client/ReportHeaderButtons.jsx
+@@ -1,7 +1,7 @@
+ import { useHistory } from 'react-router-dom/cjs/react-router-dom'
+ import styles from './ReportHeaderButtons.module.css'
+ import Button from 'antd/es/button'
+-import { EyeOutlined, DownloadOutlined, CloudOutlined, EditOutlined, ForkOutlined, ReloadOutlined, LoadingOutlined, CloudSyncOutlined, PlusOutlined, InfoCircleOutlined, ClockCircleOutlined, HistoryOutlined } from '@ant-design/icons'
++import { BgColorsOutlined, EyeOutlined, DownloadOutlined, CloudOutlined, EditOutlined, ForkOutlined, ReloadOutlined, LoadingOutlined, CloudSyncOutlined, PlusOutlined, InfoCircleOutlined, ClockCircleOutlined, HistoryOutlined } from '@ant-design/icons'
+ import { useDispatch, useSelector } from 'react-redux'
+ import ShareButton from './ShareButton'
+ import { forkReport, saveMap, saveMapPreview } from './actions/report'
+@@ -9,10 +9,11 @@ import { runAllQueries } from './actions/query'
+ import { toggleModal } from '@kepler.gl/actions/dist/ui-state-actions'
+ import { EXPORT_DATA_ID, EXPORT_IMAGE_ID, EXPORT_MAP_ID } from '@kepler.gl/constants'
+ import Dropdown from 'antd/es/dropdown'
+-import { useEffect, useState } from 'react'
++import { useEffect, useState, useRef } from 'react'
+ import Select from 'antd/es/select'
+ import Divider from 'antd/es/divider'
+ import { track } from './lib/tracking'
++import { applyStyleConfig } from './lib/mapConfig'
+ import { ForkOnboarding, useRequireOnboarding } from './ForkOnboarding'
+ import { AutoRefreshSettingsModal } from './AutoRefreshSettings'
+ import MapChangeHistoryModal from './MapChangeHistoryModal'
+@@ -232,6 +233,42 @@ function WorkspaceOnboarding () {
+   )
+ }
+ 
++function ImportStyleButton () {
++  const dispatch = useDispatch()
++  const datasets = useSelector(state => (state.keplerGl.kepler && state.keplerGl.kepler.visState) ? state.keplerGl.kepler.visState.datasets : {})
++  const inputRef = useRef(null)
++  const dataIds = Object.keys(datasets || {})
++  const onFile = (e) => {
++    const file = e.target.files && e.target.files[0]
++    e.target.value = ''
++    if (!file) return
++    const reader = new FileReader()
++    reader.onload = () => {
++      try {
++        const cfg = JSON.parse(reader.result)
++        applyStyleConfig(cfg, dataIds[0], dispatch)
++        track('ImportStyle')
++      } catch (err) {
++        window.alert('Invalid style file: ' + err.message)
++      }
++    }
++    reader.readAsText(file)
++  }
++  return (
++    <>
++      <input ref={inputRef} type='file' accept='.json,application/json' style={{ display: 'none' }} onChange={onFile} />
++      <Button
++        title={dataIds.length ? 'Import a style file (.json)' : 'Run a query first, then import a style'}
++        type='text'
++        ghost
++        icon={<BgColorsOutlined />}
++        disabled={!dataIds.length}
++        onClick={() => { if (inputRef.current) inputRef.current.click() }}
++      />
++    </>
++  )
++}
++
+ function EditModeButtons () {
+   const dispatch = useDispatch()
+   const { canWrite } = useSelector(state => state.report)
+@@ -249,6 +286,7 @@ function EditModeButtons () {
+         ? (
+           <>
+             <ForkButton />
++            <ImportStyleButton />
+             <Button
+               id='dekart-save-button'
+               title={readOnly ? 'Workspace is read-only' : saving ? 'Saving...' : 'Save this map'}
+diff --git a/src/client/lib/mapConfig.js b/src/client/lib/mapConfig.js
+index c0decf2..72cab1c 100644
+--- a/src/client/lib/mapConfig.js
++++ b/src/client/lib/mapConfig.js
+@@ -83,3 +83,30 @@ export function receiveReportUpdateMapConfig (report, dispatch, getState) {
+     return false
+   }
+ }
++
++// Apply an imported kepler style config to the current map, rebinding every
++// dataId reference to the map's current dataset so the styled layers attach.
++export function applyStyleConfig (rawConfig, dataId, dispatch) {
++  if (!dataId) {
++    window.alert('Run a query first so there is data to style.')
++    return
++  }
++  const saved = rawConfig && rawConfig.config
++    ? structuredClone(rawConfig)
++    : { version: 'v1', config: structuredClone(rawConfig) }
++  const vis = saved.config && saved.config.visState
++  if (vis) {
++    (vis.layers || []).forEach(layer => {
++      if (layer.config) layer.config.dataId = dataId
++    })
++    ;(vis.filters || []).forEach(filter => {
++      filter.dataId = Array.isArray(filter.dataId) ? filter.dataId.map(() => dataId) : dataId
++    })
++    const tooltip = vis.interactionConfig && vis.interactionConfig.tooltip
++    if (tooltip && tooltip.fieldsToShow) {
++      const fields = Object.values(tooltip.fieldsToShow)[0] || []
++      tooltip.fieldsToShow = { [dataId]: fields }
++    }
++  }
++  dispatch(receiveMapConfig(KeplerGlSchema.parseSavedConfig(saved)))
++}
