@@ -1,16 +1,102 @@
-# Dekart + Postgres example
+# Dekart local example — Postgres data source + sample maps
 
-A self-contained example: a Postgres database preloaded with ~70k Denmark
-points-of-interest, wired up as a Dekart **data source** you can query and map.
+A self-contained, fully-local [Dekart](https://dekart.xyz) playground:
 
-## What's inside
+- **Postgres** preloaded with sample geo data (Denmark POIs + German cities,
+  intercity lines, and region polygons), wired up as a Dekart **data source**.
+- **MinIO** (local S3) for query-result storage — no cloud, no license key.
+- **Dekart** on http://localhost:8080.
+- Optional **BigQuery** instance and a **patched image** that can load style files.
 
-- `docker-compose.yml` — Postgres + MinIO + Dekart, networked together.
-- `init/01-sample.sql` — loads the sample data on first start into
-  `sample.geospatial_points` (`id, name, category, longitude, latitude, geom_wkt`).
-- `init/denmark-pois.csv` — the source data (Denmark POIs).
+Everything is driven by one script: **`./dekart.sh`**.
 
-How Dekart is configured (see the compose file):
+## Quick start
+
+```sh
+cd postgres-example
+./dekart.sh up                  # start Postgres + MinIO + Dekart on :8080
+```
+
+Open http://localhost:8080 → **Create map** → click **💡 Start with a sample
+query** (a menu of Germany examples), or paste one from
+[`postgres-sample-queries.sql`](postgres-sample-queries.sql).
+
+> Map **tiles** only render with a Mapbox token. Put one in `.env`
+> (`DEKART_MAPBOX_TOKEN=pk...`) and run `./dekart.sh restart`. Layers/data work
+> without it; only the basemap imagery is blank.
+
+### `./dekart.sh` commands
+
+| Command | What it does |
+|---|---|
+| `up` | Start the core stack (pg + minio + dekart) on :8080 |
+| `bq` | Also start the BigQuery instance on :8081 (needs GCP — see below) |
+| `build` | Build the patched image + enable it (adds the **Import style** button) |
+| `official` | Switch back to the official Dekart image |
+| `down` | Stop & remove containers (keeps data) |
+| `reset` | Stop & **wipe** all data (re-runs the SQL init on next `up`) |
+| `restart` | Recreate the core stack (pick up `.env`/compose changes) |
+| `status` | Container status |
+| `logs [svc]` | Follow logs (default `dekart`; try `pg`, `minio`) |
+| `psql` | Open `psql` against the sample database |
+
+It auto-detects whether to use `docker` or `sudo docker`, and clears a leftover
+standalone `dekart` container if one is holding port 8080.
+
+## Sample data (schema `sample`)
+
+| Table | Geometry | Columns |
+|---|---|---|
+| `geospatial_points` | points | `id, name, category, longitude, latitude, geom_wkt` (~70k Denmark POIs) |
+| `germany_cities` | points | `name, state, latitude, longitude, population` (75 cities) |
+| `germany_lines` | lines | `name, from_city, to_city, distance_km, geom_wkt, geometry` (14 corridors) |
+| `germany_regions` | polygons | `region, n_cities, geom_wkt, geometry` (5 macro-region hulls) |
+
+- For **points**, kepler auto-detects `latitude`/`longitude`.
+- For **lines/polygons**, select the GeoJSON **`geometry`** column — kepler
+  auto-detects it reliably (WKT in `geom_wkt` is kept for external SQL clients).
+
+### Sample queries
+
+See [`postgres-sample-queries.sql`](postgres-sample-queries.sql) — points,
+category filters, bounding boxes, centroids (G1–G5), lines (G6, G8), polygons
+(G7), and an optional PostGIS hull example.
+
+```sql
+-- points
+SELECT name, state, latitude, longitude, population FROM sample.germany_cities;
+-- lines   (run in a NEW map)
+SELECT name, distance_km, geometry FROM sample.germany_lines;
+-- polygons (run in a NEW map)
+SELECT region, n_cities, geometry FROM sample.germany_regions;
+```
+
+> **Lines/polygons not showing?** Run each geometry query in a **new map**.
+> When you change the SQL inside an existing map, Dekart replaces the data with
+> `autoCreateLayers: false`, so it keeps the old layer and never creates a layer
+> for the new geometry. A fresh map auto-creates it. (Or add it manually:
+> Layers → **+ Add Layer** → pick the `geometry` column.)
+
+## Saving / loading map styles
+
+Dekart auto-saves each map's kepler config (layer styling, colors, base map)
+with the report, and you can reuse it by **Fork/Duplicate** (the fork icon in
+the map header) — the duplicate carries the style and rebinds it to new data.
+
+For **portable style files**, build the patched image which adds an **Import
+style** button:
+
+```sh
+./dekart.sh build               # builds dekart-custom:local and enables it
+```
+
+Then run the matching query and import a style from
+[`custom-image/styles/`](custom-image/styles):
+`points-style.json`, `lines-style.json`, `regions-style.json`. See
+[`custom-image/README.md`](custom-image/README.md) for details. Revert anytime
+with `./dekart.sh official`.
+
+## How Dekart is configured
 
 | Var | Value | Meaning |
 |---|---|---|
@@ -18,117 +104,52 @@ How Dekart is configured (see the compose file):
 | `DEKART_POSTGRES_DATASOURCE_CONNECTION` | `postgres://dekart:dekart@pg:5432/dekart_geo?sslmode=disable` | The DB to query |
 | `DEKART_STORAGE` | `S3` | Store query results in S3 (here: local MinIO) |
 | `AWS_ENDPOINT` | `http://minio:9000` | Point the S3 client at local MinIO |
-| `DEKART_CLOUD_STORAGE_BUCKET` | `dekart` | Results bucket (created by the `createbucket` step) |
+| `DEKART_CLOUD_STORAGE_BUCKET` | `dekart` | Results bucket (created by `createbucket`) |
+| `DEKART_IMAGE` | unset → `dekartxyz/dekart` | Override to use the patched image |
 
 Metadata stays on Dekart's built-in SQLite, so **no license key is required**
-(Postgres *metadata* would need one; Postgres as a *data source* does not).
+(Postgres as a *data source* is free; Postgres *metadata* would need a license).
 
 > **Why MinIO and not `DEKART_STORAGE=PG`?** The Postgres "replay" storage path
-> reads `created_at` from the SQLite metadata DB and scans it into a Go
-> `time.Time` — which fails on SQLite (it returns a string), giving a 500 on the
-> result CSV. S3/MinIO storage reads the timestamp from the stored object
-> instead, so it works with SQLite metadata. MinIO runs locally — no cloud, no
-> license. Its console is at http://localhost:9001 (minioadmin / minioadmin).
+> reads `created_at` from the SQLite metadata DB into a Go `time.Time`, which
+> fails on SQLite (it returns a string) → 500 on the result CSV. S3/MinIO reads
+> the timestamp from the stored object instead. MinIO console:
+> http://localhost:9001 (minioadmin / minioadmin).
 
-## Run it
+## BigQuery (optional — cloud only, port 8081)
 
-```sh
-# (optional) a Mapbox token so map tiles render
-export DEKART_MAPBOX_TOKEN=pk.your_token
+> ⚠️ **Not testable locally.** BigQuery is a cloud warehouse; Dekart builds its
+> BigQuery client with a fixed Google endpoint, so it can't use a local
+> emulator. This section needs a real GCP project. Results still go to the local
+> MinIO, so no GCS bucket or license is needed.
 
-cd postgres-example
-sudo docker compose up        # add -d to detach; drop `sudo` if you're in the docker group
-```
-
-Then open http://localhost:8080, click **Create map**, and run:
-
-```sql
-SELECT name, category, latitude, longitude, geom_wkt
-FROM sample.geospatial_points
-LIMIT 5000;
-```
-
-Kepler.gl auto-detects the `latitude`/`longitude` columns (or the `geom_wkt`
-WKT column) and draws the points.
-
-## Sample queries to try (local Postgres — runnable now)
-
-The data source is already loaded; just paste a query into a map on
-http://localhost:8080. See [`postgres-sample-queries.sql`](postgres-sample-queries.sql)
-for points, category filters, bounding boxes, centroids, and a PostGIS
-convex-hull example.
-
-## BigQuery (cloud only — reference, needs a GCP account)
-
-> ⚠️ **Not testable locally.** BigQuery is a cloud warehouse, and dekart builds
-> its BigQuery client with a fixed Google endpoint — it can't be pointed at a
-> local emulator without patching the source (and the emulator wouldn't support
-> the public datasets or `ST_*` functions anyway). So this section only works
-> once you have a real GCP project. The fully-local, runnable example is the
-> Postgres stack above. The `bigquery-sample-queries.sql` file and the
-> `dekart-bq` service are provided as ready-to-use reference for when you do
-> have GCP access.
-
-When you have a GCP account, this runs a **second instance on port 8081**.
-You need:
-
-1. A **GCP project** (queries are billed there; public data is free to read but
-   you pay for bytes scanned — the compose sets a 1 TiB cap).
-2. **Credentials** with `BigQuery Job User` + `BigQuery Data Viewer`.
-
-Results are stored in the same local **MinIO**, so no GCS bucket or license is
-needed.
-
-### 1. Provide credentials
-
-**Option A — service-account key (default):** download a key JSON and save it
-as `creds/key.json` (git-ignored). The compose mounts it read-only.
-
-**Option B — your gcloud login (ADC):** instead of a key file, edit the
-`dekart-bq` service to mount your ADC and drop `GOOGLE_APPLICATION_CREDENTIALS`:
-
-```yaml
-    environment:
-      # remove the GOOGLE_APPLICATION_CREDENTIALS line
-    volumes:
-      - ~/.config/gcloud:/root/.config/gcloud:ro
-```
-(run `gcloud auth application-default login` on the host first.)
-
-### 2. Start it
-
-```sh
-export GCP_PROJECT_ID=your-gcp-project
-export DEKART_MAPBOX_TOKEN=pk.your_token        # optional
-docker compose --profile bq up -d               # starts dekart-bq too
-```
-
-Open **http://localhost:8081**, click **Create map**, and paste a query from
-[`bigquery-sample-queries.sql`](bigquery-sample-queries.sql), e.g.:
-
-```sql
-SELECT name, latitude, longitude, capacity
-FROM `bigquery-public-data.new_york_citibike.citibike_stations`
-WHERE latitude IS NOT NULL
-LIMIT 2000;
-```
-
-For polygons, convert GEOGRAPHY to WKT with `ST_ASTEXT(...)` (see samples 4–6).
+1. **Credentials** with `BigQuery Job User` + `BigQuery Data Viewer`:
+   - *Service-account key (default):* save it as `creds/key.json` (git-ignored).
+   - *gcloud ADC:* mount `~/.config/gcloud:/root/.config/gcloud:ro` in the
+     `dekart-bq` service and drop `GOOGLE_APPLICATION_CREDENTIALS`
+     (run `gcloud auth application-default login` first).
+2. Set the project and start:
+   ```sh
+   echo 'GCP_PROJECT_ID=your-gcp-project' >> .env
+   ./dekart.sh bq                 # starts dekart-bq on :8081
+   ```
+3. Open http://localhost:8081 and try a query from
+   [`bigquery-sample-queries.sql`](bigquery-sample-queries.sql) (NYC Citi Bike,
+   Chicago taxi, US state/county polygons via `ST_ASTEXT`, OSM POIs).
 
 ## Connect with your own SQL client
 
 ```
-host=localhost port=5433 db=dekart_geo user=dekart password=dekart
 psql postgres://dekart:dekart@localhost:5433/dekart_geo
+# host=localhost port=5433 db=dekart_geo user=dekart password=dekart
 ```
 
-## Stop / reset
+## Reset / cleanup
 
 ```sh
-sudo docker compose down           # stop
-sudo docker compose down -v        # stop and wipe the loaded data
+./dekart.sh down      # stop, keep data
+./dekart.sh reset     # stop and wipe pg + minio volumes (re-imports on next up)
 ```
 
-> Note: this example publishes Dekart on port 8080. If you still have the
-> standalone container from earlier running, stop it first:
-> `sudo docker rm -f dekart`.
+Changing any `init/*.sql` or `init/*.csv` requires `./dekart.sh reset` (Postgres
+only runs the init scripts on a fresh data volume).

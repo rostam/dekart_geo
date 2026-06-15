@@ -4,6 +4,8 @@
 # Usage:
 #   ./dekart.sh up         # start core stack (pg + minio + dekart) on :8080
 #   ./dekart.sh bq         # also start the BigQuery instance on :8081 (needs GCP)
+#   ./dekart.sh build      # build the patched image + use it (adds "Import style")
+#   ./dekart.sh official   # switch back to the official dekart image
 #   ./dekart.sh down       # stop & remove containers (keeps data)
 #   ./dekart.sh reset      # stop & WIPE all data (postgres + minio volumes)
 #   ./dekart.sh restart    # recreate the core stack
@@ -13,6 +15,8 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
+
+CUSTOM_IMAGE="dekart-custom:local"
 
 # --- pick docker invocation: direct if we have socket access, else sudo ---
 if docker info >/dev/null 2>&1; then
@@ -25,12 +29,21 @@ else
   echo "      To drop sudo: sudo usermod -aG docker \$USER  then open a new shell."
 fi
 
-# Compose reads ./.env automatically for DEKART_MAPBOX_TOKEN / GCP_PROJECT_ID.
+# Compose reads ./.env automatically for DEKART_MAPBOX_TOKEN / GCP_PROJECT_ID / DEKART_IMAGE.
 ensure_env() {
   if [[ ! -f .env && -f .env.sample ]]; then
     cp .env.sample .env
     echo "Created .env from .env.sample — edit it to set DEKART_MAPBOX_TOKEN (and GCP_PROJECT_ID for bq)."
   fi
+}
+
+# set_env_var KEY VALUE  -> upsert an active (uncommented) KEY=VALUE line in .env
+set_env_var() {
+  ensure_env
+  local key="$1" val="$2"
+  # drop any existing active line for this key, then append
+  sed -i "/^${key}=/d" .env
+  printf '%s=%s\n' "$key" "$val" >> .env
 }
 
 free_8080() {
@@ -62,11 +75,24 @@ case "${1:-up}" in
     $DC --profile bq up -d
     echo; urls bq
     ;;
+  build)
+    ./custom-image/build.sh
+    set_env_var DEKART_IMAGE "$CUSTOM_IMAGE"
+    echo "Set DEKART_IMAGE=$CUSTOM_IMAGE in .env; recreating stack..."
+    free_8080; $DC up -d --force-recreate
+    echo; urls
+    ;;
+  official)
+    sed -i '/^DEKART_IMAGE=/d' .env 2>/dev/null || true
+    echo "Reverted to official image; recreating stack..."
+    ensure_env; free_8080; $DC up -d --force-recreate
+    echo; urls
+    ;;
   down|stop)    $DC --profile bq down ;;
   reset)        $DC --profile bq down -v; echo "All data wiped." ;;
   restart)      ensure_env; free_8080; $DC up -d --force-recreate; echo; urls ;;
   status|ps)    $DC --profile bq ps ;;
   logs)         $DC logs -f "${2:-dekart}" ;;
   psql)         $DC exec pg psql -U dekart -d dekart_geo ;;
-  *)            echo "Usage: $0 {up|bq|down|reset|restart|status|logs [svc]|psql}"; exit 1 ;;
+  *)            echo "Usage: $0 {up|bq|build|official|down|reset|restart|status|logs [svc]|psql}"; exit 1 ;;
 esac

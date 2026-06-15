@@ -1,0 +1,57 @@
+{
+  "version": "v1",
+  "config": {
+    "visState": {
+      "filters": [],
+      "layers": [
+        {
+          "id": "regions_hulls",
+          "type": "geojson",
+          "config": {
+            "dataId": "REPLACE_ME",
+            "label": "Regions",
+            "color": [90, 24, 70],
+            "columns": { "geojson": "geometry" },
+            "isVisible": true,
+            "visConfig": {
+              "opacity": 0.5,
+              "thickness": 1,
+              "strokeColor": [255, 255, 255],
+              "colorRange": {
+                "name": "ColorBrewer YlOrRd-6",
+                "type": "sequential",
+                "category": "ColorBrewer",
+                "colors": ["#ffffb2", "#fed976", "#feb24c", "#fd8d3c", "#f03b20", "#bd0026"]
+              },
+              "stroked": true,
+              "filled": true,
+              "enable3d": false,
+              "wireframe": false,
+              "strokeOpacity": 0.8
+            },
+            "textLabel": []
+          },
+          "visualChannels": {
+            "colorField": { "name": "n_cities", "type": "integer" },
+            "colorScale": "quantize",
+            "strokeColorField": null,
+            "sizeField": null
+          }
+        }
+      ],
+      "interactionConfig": {
+        "tooltip": {
+          "fieldsToShow": {
+            "REPLACE_ME": [
+              { "name": "region", "format": null },
+              { "name": "n_cities", "format": null }
+            ]
+          },
+          "enabled": true
+        }
+      }
+    },
+    "mapState": { "bearing": 0, "pitch": 0, "latitude": 51.1, "longitude": 10.4, "zoom": 5 },
+    "mapStyle": { "styleType": "dark" }
+  }
+}

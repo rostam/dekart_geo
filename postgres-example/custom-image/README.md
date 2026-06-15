@@ -13,32 +13,32 @@ become genuinely loadable and portable.
 - `build.sh` — clones that commit, applies the patch, builds `dekart-custom:local`.
 - `styles/points-style.json` — point map: cities colored & sized by population.
 - `styles/lines-style.json` — line map: corridors colored by distance.
+- `styles/regions-style.json` — polygon map: region hulls filled by city count.
 
-## Build it
-
-```sh
-cd custom-image
-./build.sh                 # builds dekart-custom:local (several minutes)
-```
-
-Then point the stack at the new image and restart:
+## Build it (one command)
 
 ```sh
-echo 'DEKART_IMAGE=dekart-custom:local' >> ../.env
-cd .. && ./dekart.sh restart
+cd ..                      # postgres-example/
+./dekart.sh build          # builds dekart-custom:local, sets DEKART_IMAGE, restarts
 ```
 
-(`docker-compose.yml` uses `${DEKART_IMAGE:-dekartxyz/dekart}`, so without this
-line it falls back to the official image.)
+`./dekart.sh build` runs `custom-image/build.sh`, writes `DEKART_IMAGE=dekart-custom:local`
+into `.env`, and recreates the stack. To go back to the official image:
+`./dekart.sh official`.
+
+(`docker-compose.yml` uses `${DEKART_IMAGE:-dekartxyz/dekart}`, so without that
+`.env` line it falls back to the official image. You can also run
+`custom-image/build.sh` directly if you prefer to set `DEKART_IMAGE` yourself.)
 
 ## Use it
 
-1. Create a map and run a query:
+1. Create a map and run the matching query:
    - **Points:** `SELECT name, state, latitude, longitude, population FROM sample.germany_cities;`
    - **Lines:**  `SELECT name, distance_km, geometry FROM sample.germany_lines;`
+   - **Polygons:** `SELECT region, n_cities, geometry FROM sample.germany_regions;`
 2. Click the **Import style** button (paint-drop icon) in the map header.
-3. Pick `styles/points-style.json` (for the points query) or
-   `styles/lines-style.json` (for the lines query).
+3. Pick the matching file: `styles/points-style.json`, `styles/lines-style.json`,
+   or `styles/regions-style.json`.
 
 The style applies to whatever dataset is loaded, regardless of its id. The
 `mapState` in each file also recenters on Germany.
